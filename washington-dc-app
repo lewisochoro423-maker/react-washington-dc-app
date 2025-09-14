@@ -1,0 +1,242 @@
+import React, { useState, useEffect } from 'react';
+
+const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3000/api';
+
+function App() {
+  const [token, setToken] = useState(localStorage.getItem('token') || '');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loggedInUser, setLoggedInUser] = useState(null);
+  const [investment, setInvestment] = useState('');
+  const [userData, setUserData] = useState(null);
+  const [referralEmail, setReferralEmail] = useState('');
+  const [message, setMessage] = useState('');
+
+  async function fetchUserData() {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/investment/userdata`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUserData(data);
+      } else {
+        setUserData(null);
+        setLoggedInUser(null);
+        setToken('');
+        localStorage.removeItem('token');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  useEffect(() => {
+    if (token) {
+      fetchUserData();
+    }
+  }, [token]);
+
+  async function register() {
+    if (!username || !password) {
+      setMessage('Username and password are required');
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToken(data.token);
+        localStorage.setItem('token', data.token);
+        setLoggedInUser(data.username);
+        setMessage(`Registered as ${data.username}`);
+      } else {
+        setMessage(data.message || 'Registration failed');
+      }
+    } catch (e) {
+      setMessage('Error registering');
+    }
+  }
+
+  async function login() {
+    if (!username || !password) {
+      setMessage('Username and password are required');
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToken(data.token);
+        localStorage.setItem('token', data.token);
+        setLoggedInUser(data.username);
+        setMessage(`Logged in as ${data.username}`);
+      } else {
+        setMessage(data.message || 'Login failed');
+      }
+    } catch (e) {
+      setMessage('Error logging in');
+    }
+  }
+
+  function logout() {
+    setToken('');
+    localStorage.removeItem('token');
+    setLoggedInUser(null);
+    setUserData(null);
+    setMessage('Logged out');
+  }
+
+  async function submitInvestment() {
+    if (!investment || isNaN(investment)) {
+      setMessage('Please enter a valid investment amount');
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/investment/invest`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ amount: Number(investment) }),
+      });
+      if (res.ok) {
+        setMessage('Investment saved');
+        fetchUserData();
+      } else {
+        const data = await res.json();
+        setMessage(data.message || 'Investment failed');
+      }
+    } catch (e) {
+      setMessage('Error saving investment');
+    }
+  }
+
+  async function completeTask(taskName) {
+    try {
+      const res = await fetch(`${API_BASE}/investment/task/${taskName}`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`
+        },
+      });
+      if(res.ok) {
+        setMessage(`Task '${taskName}' marked complete`);
+        fetchUserData();
+      } else {
+        const data = await res.json();
+        setMessage(data.message || 'Failed to complete task');
+      }
+    } catch (e) {
+      setMessage('Error completing task');
+    }
+  }
+
+  const phoneNumber = '0105664829';
+  function handlePayClick() {
+    alert(`Please pay the invested amount via this number: ${phoneNumber}`);
+  }
+
+  if (!loggedInUser) {
+    return (
+      <div>
+        <h2>Register / Login</h2>
+        <input placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} />
+        <input placeholder="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} />
+        <button onClick={register}>Register</button>
+        <button onClick={login}>Login</button>
+        <p>{message}</p>
+      </div>
+    );
+  }
+
+  if (!userData || userData.investmentAmount === 0) {
+    return (
+      <div>
+        <h2>Welcome, {loggedInUser}</h2>
+        <p>Please enter your investment amount (minimum 2000):</p>
+        <input type="number" value={investment} onChange={e => setInvestment(e.target.value)} />
+        <button onClick={submitInvestment}>Submit Investment</button>
+        <button onClick={logout}>Logout</button>
+        <p>{message}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h2>Welcome, {loggedInUser}</h2>
+      <p>Investment: {userData.investmentAmount}</p>
+      <p>Daily Earning Rate: {userData.dailyEarning}</p>
+
+      <h3>Tasks</h3>
+
+      <button 
+        onClick={() => completeTask('watchedVideo')} 
+        disabled={userData.tasksCompleted.watchedVideo}
+      >
+        Watch Educational Video {userData.tasksCompleted.watchedVideo ? '(Completed)' : ''}
+      </button>
+
+      <div>
+        <input 
+          placeholder="Enter referral email" 
+          value={referralEmail} 
+          onChange={e => setReferralEmail(e.target.value)} 
+          disabled={userData.tasksCompleted.referralDone}
+        />
+        <button 
+          onClick={() => {
+            if (referralEmail) {
+              completeTask('referralDone');
+              setReferralEmail('');
+            } else {
+              setMessage('Enter referral email before submitting');
+            }
+          }}
+          disabled={userData.tasksCompleted.referralDone}
+        >
+          Submit Referral {userData.tasksCompleted.referralDone ? '(Completed)' : ''}
+        </button>
+      </div>
+
+      <div>
+        <label>
+          <input 
+            type="checkbox" 
+            checked={userData.tasksCompleted.checkInDone} 
+            onChange={() => completeTask('checkInDone')} 
+            disabled={userData.tasksCompleted.checkInDone}
+          />
+          Daily Check-in {userData.tasksCompleted.checkInDone ? '(Completed)' : ''}
+        </label>
+      </div>
+
+      <h3>Total Earnings from Tasks:</h3>
+      <p>
+        {(
+          (userData.tasksCompleted.watchedVideo ? 0.3 : 0) +
+          (userData.tasksCompleted.referralDone ? 0.4 : 0) +
+          (userData.tasksCompleted.checkInDone ? 0.3 : 0)
+        ) * userData.dailyEarning}
+      </p>
+
+      <button onClick={handlePayClick}>Pay here: {phoneNumber}</button>
+
+      <button onClick={logout}>Logout</button>
+      <p>{message}</p>
+    </div>
+  );
+}
+
+export default App;
